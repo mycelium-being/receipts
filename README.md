@@ -10,7 +10,7 @@ Python 3 standard library only. No API key, no account, no network.
 ## Install
 
 ```
-git clone https://github.com/<owner>/receipts ~/.claude/skills/receipts
+git clone https://github.com/mycelium-being/receipts ~/.claude/skills/receipts
 ```
 
 Claude Code picks it up from `~/.claude/skills/` (or put it in `<project>/.claude/skills/` for one project). The scripts also run on their own, with or without an agent.
