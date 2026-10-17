@@ -55,7 +55,10 @@ Applies whenever you are about to say work is finished, fixed, shipped, deployed
    python3 SKILL_DIR/check_done.py --file <draft-file> --root <repo-or-project-dir>
    ```
 3. **Act on the verdict:**
-   - `RECEIPT` — a path that exists, or a commit the repo at `--root` knows. Allowed.
+   - `RECEIPT` — a non-empty path that exists, or a commit the repo at `--root` knows. Allowed.
+     A receipt resolving outside `--root` is marked `[outside --root]`: it opens, but it is not
+     evidence about this project. An existing file of 0 bytes is `MISSING`, not a receipt.
+   - `--root` defaults to the current directory, so it can be left off when you run from the project.
    - `URL` — accepted but **not fetched**. You must have opened it yourself in this session, or say plainly that you have not.
    - `MISSING` — you named a path or SHA that does not exist. This is the worst case: a receipt that looks real. Find the real one or withdraw the claim.
    - `REFUSED` with nothing named — say what the receipt is, or say the work is not done. "All tests pass" is a claim; the receipt is the test output, so paste it or point to the log file.

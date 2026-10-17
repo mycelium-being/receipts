@@ -8,8 +8,11 @@ Usage:
 
 A claim is accepted only when it carries at least one receipt that resolves:
 
-    path   an existing file or directory (absolute, ~/..., or relative to --root;
-           a trailing :line or :line:col is allowed)
+    path   an existing, non-empty file, or a directory (absolute, ~/..., or
+           relative to --root -- never relative to the working directory;
+           a trailing :line or :line:col is allowed).  A path that resolves
+           outside --root is accepted and marked [outside --root].  A file that
+           exists but holds 0 bytes is reported MISSING, not RECEIPT.
     sha    a 7-40 hex id that `git cat-file -e <sha>^{commit}` resolves in --root
     url    an http(s) URL. Not fetched (this script never touches the network):
            it is printed so a person can open it, and marked unverified.
@@ -62,15 +65,33 @@ _NOT_PATH_RE = re.compile(r"^(?:e\.g|i\.e|etc|vs|v?\d+(?:\.\d+)+%?|\d+(?:\.\d+)?
 
 
 def _resolve_path(raw: str, root: Path) -> Path | None:
+    """An existing file or directory for `raw`, or None.
+
+    A relative path resolves against `--root` and nowhere else. It used to fall
+    back to the process's working directory, which meant a file that existed
+    beside the agent but not in the project under test came back as a RECEIPT,
+    exit 0 -- a false green in the one direction this script exists to stop.
+    """
     raw = _LINE_SUFFIX_RE.sub("", raw.strip().rstrip(".,;:)]}"))
     if not raw or _NOT_PATH_RE.match(raw):
         return None
     p = Path(raw).expanduser()
-    candidates = [p] if p.is_absolute() else [root / p, Path.cwd() / p]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
+    c = p if p.is_absolute() else root / p
+    return c if c.exists() else None
+
+
+def _outside(hit: Path, root: Path) -> bool:
+    """True when a resolved path is not under --root.
+
+    Absolute and ~/... receipts are documented, so this does not refuse them --
+    but a file somewhere else on the disk is not evidence that the work in THIS
+    project was done, and the reader should see which it is.
+    """
+    try:
+        hit.resolve().relative_to(root.resolve())
+        return False
+    except ValueError:
+        return True
 
 
 def _is_repo(root: Path) -> bool:
@@ -117,6 +138,11 @@ def receipts(text: str, root: Path, repo: bool) -> tuple[list[str], list[str], l
             resolved.append(f"sha   {sha}  (commit in {root})")
         elif repo:
             missing.append(f"sha   {sha}  (no such commit in {root})")
+        else:
+            # Verdict was already right here; the reason was not.  "It names
+            # nothing anyone could open" is false when it named a commit id and
+            # there was no repository to look in.
+            missing.append(f"sha   {sha}  (no git repository at {root}: cannot verify)")
     rest = _SHA_RE.sub(" ", rest)
 
     # Backticked spans are the explicit register: anything path-shaped inside one is a claim of a path.
@@ -129,8 +155,15 @@ def receipts(text: str, root: Path, repo: bool) -> tuple[list[str], list[str], l
         seen.add(key)
         hit = _resolve_path(raw, root)
         if hit:
+            # An existing but empty file is the cheapest fake receipt there is:
+            # `touch src/parser.py` and the claim passes.  SKILL.md's rule 2.4
+            # said "open it and confirm it contains the work" in prose only.
+            if hit.is_file() and hit.stat().st_size == 0:
+                missing.append(f"path  {hit}  (exists but is empty: 0 bytes)")
+                continue
             kind = "dir " if hit.is_dir() else "path"
-            resolved.append(f"{kind}  {hit}")
+            where = "  [outside --root]" if _outside(hit, root) else ""
+            resolved.append(f"{kind}  {hit}{where}")
         elif ("/" in key or "." in key) and not _NOT_PATH_RE.match(key) and (
             is_explicit or "/" in key or re.search(r"\.[A-Za-z]{1,6}$", key)
         ):

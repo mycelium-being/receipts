@@ -10,7 +10,7 @@ Python 3 standard library only. No API key, no account, no network.
 ## Install
 
 ```
-git clone https://github.com/mycelium-being/receipts ~/.claude/skills/receipts
+git clone https://github.com/<owner>/receipts ~/.claude/skills/receipts
 ```
 
 Claude Code picks it up from `~/.claude/skills/` (or put it in `<project>/.claude/skills/` for one project). The scripts also run on their own, with or without an agent.
@@ -18,7 +18,7 @@ Claude Code picks it up from `~/.claude/skills/` (or put it in `<project>/.claud
 ## 20-second example
 
 ```
-$ python3 check_quotes.py profile.md --corpus interviews/
+$ python3 ~/.claude/skills/receipts/check_quotes.py profile.md --corpus interviews/
 FOUND    profile.md:7  "Honestly the sea does not care about our schedule, it only cares about the weight we put in front of it."
          in interviews/interview_2026_03.md
 NOWHERE  profile.md:9  "The ocean always wins in the end, so build for the hundred-year storm and then add a metre."
@@ -31,7 +31,7 @@ FOUND    profile.md:13  "Every breakwater I have built was designed by people wh
 
 4 quotes of 40+ chars checked against 3 corpus files: 2 FOUND, 2 NOWHERE
 
-$ python3 check_done.py "Fixed the parser in src/parse_quotes.py"
+$ python3 ~/.claude/skills/receipts/check_done.py "Fixed the parser in src/parse_quotes.py"
 CLAIM: "Fixed the parser in src/parse_quotes.py"
   MISSING  path  src/parse_quotes.py  (does not exist under /home/you/project)
   -> REFUSED: it names a receipt that does not resolve. ...
