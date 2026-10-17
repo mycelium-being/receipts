@@ -2,7 +2,7 @@
 """Check that every long quote in a file exists, word for word, in a corpus.
 
 Usage:
-    python3 check_quotes.py <file> [<file> ...] --corpus <dir-or-file> [--corpus ...] [--min-chars 40]
+    python3 check_quotes.py <file> [<file> ...] --corpus <dir-or-file> [--corpus ...] [--min-chars 40] [--require-quotes]
 
 Every double-quoted span ("..." or curly quotes) of at least --min-chars
 characters is normalised and searched for in the corpus. Each is reported:
@@ -11,6 +11,9 @@ characters is normalised and searched for in the corpus. Each is reported:
     NOWHERE  <file>:<line>  plus the closest corpus passage, so a changed word shows
 
 Exit 0 when every quote was found, 1 when any is NOWHERE, 2 on bad usage.
+Exit 0 on a file that holds no quote of --min-chars or longer means nothing was
+checked, NOT that the text is verified: the run says NOTHING CHECKED and the
+summary counts 0 quotes. --require-quotes makes that case exit 1 instead.
 
 Normalisation (punctuation, case, curly quotes, dashes and whitespace never decide
 a match) means a quote passes when its WORDS are verbatim. One changed, added or
@@ -202,12 +205,15 @@ def main(argv: list[str]) -> int:
     targets: list[Path] = []
     corpus: list[Path] = []
     min_chars = DEFAULT_MIN_CHARS
+    require_quotes = False
     it = iter(argv)
     for a in it:
         if a == "--corpus":
             corpus.append(Path(next(it, "")).expanduser())
         elif a == "--min-chars":
             min_chars = int(next(it, str(DEFAULT_MIN_CHARS)))
+        elif a == "--require-quotes":
+            require_quotes = True
         elif a in ("-h", "--help"):
             print(__doc__)
             return 0
@@ -237,6 +243,20 @@ def main(argv: list[str]) -> int:
         f"{len(blobs)} corpus file{'' if len(blobs) == 1 else 's'}: "
         f"{total_found} FOUND, {total_nowhere} NOWHERE"
     )
+    if total_found + total_nowhere == 0:
+        # A run that checked nothing exits 0, and an exit code of 0 reads as a
+        # pass. The leading "0 quotes" in the summary above is easy to skim
+        # past, so say it in words on its own line. The exit code does not
+        # change by default: honest prose with no long quotes has nothing to
+        # refuse. --require-quotes is for a caller that needs at least one.
+        names = ", ".join(str(t) for t in targets)
+        print(
+            f"NOTHING CHECKED: no quote of {min_chars}+ chars in {names}. "
+            "This is not a verification. Say the text has no quotes long enough "
+            "to check -- never that its quotes are verified."
+        )
+        if require_quotes:
+            return 1
     return 1 if total_nowhere else 0
 
 

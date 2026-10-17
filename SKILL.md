@@ -29,7 +29,7 @@ Applies whenever you write text that puts words in quotation marks and attribute
    - `FOUND` — the words exist in the corpus file shown. Keep the quote.
    - `NOWHERE` with a `closest` passage — you changed words. Replace your quote with the corpus words exactly, or remove the quotation marks and write it as a paraphrase ("she said, roughly, that ...").
    - `NOWHERE` with no resembling passage — you have no source. Delete the quote, or ask the user where it came from. Do not keep it on the grounds that it sounds like them.
-5. **Re-run until exit code 0** before you deliver the text. Do not tell the user the quotes are verified unless the last run exited 0, and show them its summary line.
+5. **Re-run until exit code 0** before you deliver the text. Do not tell the user the quotes are verified unless the last run exited 0 **and checked at least one quote** -- the summary line says how many -- and show them that line.
 
 What the check does and does not do:
 
@@ -71,3 +71,5 @@ Do it, and say once that the quotes or the claim are unchecked. Never write "ver
 ## Exit codes
 
 Both scripts: `0` everything has a receipt, `1` something is NOWHERE / REFUSED, `2` bad usage (missing file, missing corpus). Treat `2` as a failure to check, not as a pass.
+
+`0` from `check_quotes.py` on a document holding no quote of 40+ characters means **nothing was checked**, not that the text is verified. That run prints `NOTHING CHECKED` and a summary counting `0 quotes`. Say "no quotes long enough to check"; never "quotes verified". `--require-quotes` turns that case into exit 1, for a caller that needs at least one checkable quote.

@@ -39,6 +39,8 @@ CLAIM: "Fixed the parser in src/parse_quotes.py"
 
 One quote invented outright, one with a word swapped, one claim pointing at a file that is not there. All three read as true until checked.
 
+Both checks are necessary, not sufficient. A file that exists is not proof the work is inside it, and a document with no quote of 40+ characters exits 0 having checked nothing -- the run says `NOTHING CHECKED` and the summary counts `0 quotes` (`--require-quotes` makes that exit 1).
+
 See `SKILL.md` for the workflow the agent follows and what the checks can and cannot tell you.
 
 ## License
