@@ -15,6 +15,12 @@ Exit 0 on a file that holds no quote of --min-chars or longer means nothing was
 checked, NOT that the text is verified: the run says NOTHING CHECKED and the
 summary counts 0 quotes. --require-quotes makes that case exit 1 instead.
 
+A file is never searched against itself, nor against a corpus file identical to it
+after normalisation, so the summary names the population the search SAW: "checked
+against 1 of the 3 corpus files" means two were excluded, and the per-target
+POPULATION lines below it say which and why. When every corpus file was excluded
+the run says NOTHING SEARCHED -- a quote compared against nothing is not verified.
+
 Normalisation (punctuation, case, curly quotes, dashes and whitespace never decide
 a match) means a quote passes when its WORDS are verbatim. One changed, added or
 dropped word fails. An elision written as "...", "…" or "[...]" splits the quote
@@ -29,6 +35,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
+from typing import NamedTuple
 
 DEFAULT_MIN_CHARS = 40
 # Pieces of an elided quote shorter than this are too common to prove anything.
@@ -162,7 +169,21 @@ def closest(quote_norm: str, blobs: list[tuple[str, str]]) -> tuple[str, str, fl
     return best[1], best[2], best[3]
 
 
-def check_file(target: Path, blobs: list[tuple[str, str]], min_chars: int) -> tuple[int, int]:
+class Checked(NamedTuple):
+    """One target's counts, plus the corpus population its quotes were compared against.
+
+    `searched` is not `len(blobs)`: two classes are excluded from every lookup, so a
+    summary that counts what `load_corpus` returned claims a breadth no quote had.
+    """
+
+    found: int
+    nowhere: int
+    searched: int
+    excluded_self: list[str]
+    excluded_copies: list[str]
+
+
+def check_file(target: Path, blobs: list[tuple[str, str]], min_chars: int) -> Checked:
     src = target.read_text(encoding="utf-8", errors="ignore")
     suffix = target.suffix.lower()
     prose = suffix not in CODE_SUFFIXES
@@ -172,6 +193,22 @@ def check_file(target: Path, blobs: list[tuple[str, str]], min_chars: int) -> tu
             "expect noise. Run this on prose (.md, .txt, a draft message) instead."
         )
     self_text = norm(src)
+    # A file never sources itself, even when it sits inside the corpus dir, and a corpus
+    # file identical to it after normalisation is that same file under another name.
+    # Both are excluded from every lookup below, so neither is part of the population
+    # this run searched -- and the summary must count THIS list, not everything
+    # load_corpus returned, or a draft in its own corpus directory is shown a breadth
+    # no quote of it was ever compared against.
+    searched: list[tuple[str, str]] = []
+    excluded_self: list[str] = []
+    excluded_copies: list[str] = []
+    for p, t in blobs:
+        if Path(p).resolve() == target.resolve():
+            excluded_self.append(p)
+        elif t == self_text:
+            excluded_copies.append(p)
+        else:
+            searched.append((p, t))
     found = nowhere = 0
     for quote, offset in iter_quotes(src, prose=prose):
         if len(quote) < min_chars or "\n\n" in quote:
@@ -182,23 +219,19 @@ def check_file(target: Path, blobs: list[tuple[str, str]], min_chars: int) -> tu
         line = src.count("\n", 0, offset) + 1
         shown = " ".join(quote.split())
         shown = shown if len(shown) <= 140 else shown[:137] + "..."
-        # A file never sources itself, even when it sits inside the corpus dir.
-        hit = next(
-            (p for p, t in blobs if t != self_text and Path(p).resolve() != target.resolve() and match(frags, t)),
-            None,
-        )
+        hit = next((p for p, t in searched if match(frags, t)), None)
         if hit:
             found += 1
             print(f'FOUND    {target}:{line}  "{shown}"\n         in {hit}')
             continue
         nowhere += 1
         print(f'NOWHERE  {target}:{line}  "{shown}"')
-        near = closest(" ".join(frags), [(p, t) for p, t in blobs if Path(p).resolve() != target.resolve()])
+        near = closest(" ".join(frags), searched)
         if near and near[2] >= 0.6:
             print(f'         closest ({near[2]:.0%} alike) in {near[0]}:\n         "{near[1]}"')
         else:
             print("         no corpus passage resembles it")
-    return found, nowhere
+    return Checked(found, nowhere, len(searched), excluded_self, excluded_copies)
 
 
 class Usage(Exception):
@@ -273,18 +306,63 @@ def main(argv: list[str]) -> int:
         print("error: the corpus holds no readable text file", file=sys.stderr)
         return 2
     total_found = total_nowhere = 0
+    results: list[tuple[Path, Checked]] = []
     for t in targets:
         if not t.is_file():
             print(f"error: no such file: {t}", file=sys.stderr)
             return 2
-        f, n = check_file(t, blobs, min_chars)
-        total_found += f
-        total_nowhere += n
+        r = check_file(t, blobs, min_chars)
+        results.append((t, r))
+        total_found += r.found
+        total_nowhere += r.nowhere
+    # The breadth shown to a person is the breadth the search had. `load_corpus`
+    # returned len(blobs) files; each target excluded itself and its own copies, so the
+    # honest headline is the narrowest population any target searched -- never a number
+    # some quote in this run was never compared against.
+    loaded = len(blobs)
+    checked = total_found + total_nowhere
+    populations = sorted({r.searched for _, r in results})
+    narrowest = populations[0] if populations else loaded
+    files = f"corpus file{'' if loaded == 1 else 's'}"
+    if narrowest == loaded:
+        against = f"{loaded} {files}"
+    elif len(populations) == 1:
+        against = f"{narrowest} of the {loaded} {files}"
+    else:
+        against = f"as few as {narrowest} of the {loaded} {files}"
     print(
-        f"\n{total_found + total_nowhere} quotes of {min_chars}+ chars checked against "
-        f"{len(blobs)} corpus file{'' if len(blobs) == 1 else 's'}: "
+        f"\n{checked} quotes of {min_chars}+ chars checked against {against}: "
         f"{total_found} FOUND, {total_nowhere} NOWHERE"
     )
+    if narrowest < loaded and checked:
+        print(
+            "POPULATION: a quote is never searched against the file it is in, nor "
+            "against a corpus file identical to that file after normalisation, so the "
+            "count above is what the search saw, not the "
+            f"{loaded} file{'' if loaded == 1 else 's'} the corpus holds:"
+        )
+        for t, r in results:
+            if r.searched == loaded:
+                continue
+            why = []
+            if r.excluded_self:
+                why.append("itself (" + ", ".join(r.excluded_self) + ")")
+            if r.excluded_copies:
+                n = len(r.excluded_copies)
+                why.append(
+                    f"{n} identical cop{'y' if n == 1 else 'ies'} (" + ", ".join(r.excluded_copies) + ")"
+                )
+            print(f"  {t}: searched {r.searched} of {loaded}; excluded " + ", and ".join(why))
+    blind = [str(t) for t, r in results if r.searched == 0 and r.found + r.nowhere]
+    if blind:
+        # The mirror of NOTHING CHECKED below: there the file held no quote, here the
+        # corpus held no file to compare one against. Both exit codes stay as they were
+        # -- a quote searched against nothing is already NOWHERE, so the run exits 1.
+        print(
+            f"NOTHING SEARCHED: every corpus file was excluded for {', '.join(blind)}, so "
+            "its quotes were compared against nothing. This is not a verification -- point "
+            "--corpus at a source other than the file being checked."
+        )
     if total_found + total_nowhere == 0:
         # A run that checked nothing exits 0, and an exit code of 0 reads as a
         # pass. The leading "0 quotes" in the summary above is easy to skim
