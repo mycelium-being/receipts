@@ -29,7 +29,7 @@ Applies whenever you write text that puts words in quotation marks and attribute
    - `FOUND` — the words exist in the corpus file shown. Keep the quote.
    - `NOWHERE` with a `closest` passage — you changed words. Replace your quote with the corpus words exactly, or remove the quotation marks and write it as a paraphrase ("she said, roughly, that ...").
    - `NOWHERE` with no resembling passage — you have no source. Delete the quote, or ask the user where it came from. Do not keep it on the grounds that it sounds like them.
-5. **Re-run until exit code 0** before you deliver the text. Do not tell the user the quotes are verified unless the last run exited 0 **and checked at least one quote** -- the summary line says how many -- and show them that line.
+5. **Re-run until exit code 0** before you deliver the text. Do not tell the user the quotes are verified unless the last run exited 0 **and checked at least one quote** -- the summary line says how many -- and show them that line. Read its breadth as written: `against 1 of the 3 corpus files` means two were excluded (the draft itself, or a copy of it in the corpus) and a `POPULATION` line says which -- never report the corpus size as the number of sources consulted. `NOTHING SEARCHED` means the quote was compared against nothing at all.
 
 What the check does and does not do:
 
