@@ -198,21 +198,51 @@ def claim_sentences(text: str) -> list[str]:
     return out
 
 
+class Usage(Exception):
+    """Argv this script refuses to interpret. Caught in main(), reported as exit 2."""
+
+
+def _value(it, flag: str) -> str:
+    """The token after `flag`, or refuse.
+
+    This used to be `next(it, "")`, so a flag that came last silently became the empty
+    string -- and `Path("")` is the working directory, not nothing. `--corpus` with its
+    value lost therefore searched the cwd and reported every quote NOWHERE: exit 1, the
+    same code a genuinely fabricated quote returns, on the one tool whose job is telling
+    those apart. A value beginning with "-" is refused for the same reason: a flag must
+    not be able to swallow the next flag.
+
+    check_quotes.py carries an identical copy, because each script here is standalone by
+    design. tests/test_input_refusals.py asserts both, so a repair landing at one site
+    alone reds the suite.
+    """
+    v = next(it, None)
+    if v is None:
+        raise Usage(f"{flag} needs a value and nothing followed it")
+    if v.startswith("-"):
+        raise Usage(f"{flag} needs a value, not another flag ({v})")
+    return v
+
+
 def main(argv: list[str]) -> int:
     root = Path.cwd()
     file_arg: Path | None = None
     words: list[str] = []
     it = iter(argv)
-    for a in it:
-        if a == "--root":
-            root = Path(next(it, ".")).expanduser().resolve()
-        elif a == "--file":
-            file_arg = Path(next(it, "")).expanduser()
-        elif a in ("-h", "--help"):
-            print(__doc__)
-            return 0
-        else:
-            words.append(a)
+    try:
+        for a in it:
+            if a == "--root":
+                root = Path(_value(it, "--root")).expanduser().resolve()
+            elif a == "--file":
+                file_arg = Path(_value(it, "--file")).expanduser()
+            elif a in ("-h", "--help"):
+                print(__doc__)
+                return 0
+            else:
+                words.append(a)
+    except Usage as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
+        return 2
     if not root.is_dir():
         print(f"error: --root is not a directory: {root}", file=sys.stderr)
         return 2

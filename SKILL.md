@@ -70,6 +70,6 @@ Do it, and say once that the quotes or the claim are unchecked. Never write "ver
 
 ## Exit codes
 
-Both scripts: `0` everything has a receipt, `1` something is NOWHERE / REFUSED, `2` bad usage (missing file, missing corpus). Treat `2` as a failure to check, not as a pass.
+Both scripts: `0` everything has a receipt, `1` something is NOWHERE / REFUSED, `2` bad usage (missing file, missing corpus, or a flag whose value is missing -- `--corpus` or `--min-chars` with nothing after it is `REFUSED` by name, never guessed). Treat `2` as a failure to check, not as a pass.
 
 `0` from `check_quotes.py` on a document holding no quote of 40+ characters means **nothing was checked**, not that the text is verified. That run prints `NOTHING CHECKED` and a summary counting `0 quotes`. Say "no quotes long enough to check"; never "quotes verified". `--require-quotes` turns that case into exit 1, for a caller that needs at least one checkable quote.

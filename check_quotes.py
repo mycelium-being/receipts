@@ -201,24 +201,66 @@ def check_file(target: Path, blobs: list[tuple[str, str]], min_chars: int) -> tu
     return found, nowhere
 
 
+class Usage(Exception):
+    """Argv this script refuses to interpret. Caught in main(), reported as exit 2."""
+
+
+def _value(it, flag: str) -> str:
+    """The token after `flag`, or refuse.
+
+    This used to be `next(it, "")`, so a flag that came last silently became the empty
+    string -- and `Path("")` is the working directory, not nothing. `--corpus` with its
+    value lost therefore searched the cwd and reported every quote NOWHERE: exit 1, the
+    same code a genuinely fabricated quote returns, on the one tool whose job is telling
+    those apart. A value beginning with "-" is refused for the same reason: a flag must
+    not be able to swallow the next flag.
+
+    check_done.py carries an identical copy, because each script here is standalone by
+    design. tests/test_input_refusals.py asserts both, so a repair landing at one site
+    alone reds the suite.
+    """
+    v = next(it, None)
+    if v is None:
+        raise Usage(f"{flag} needs a value and nothing followed it")
+    if v.startswith("-"):
+        raise Usage(f"{flag} needs a value, not another flag ({v})")
+    return v
+
+
+def _positive_int(raw: str, flag: str) -> int:
+    """A count, or refuse. `int(raw)` on prose raised ValueError, and an uncaught
+    exception exits 1 -- indistinguishable from a quote found NOWHERE."""
+    try:
+        n = int(raw)
+    except ValueError:
+        raise Usage(f"{flag} needs a whole number, not {raw!r}") from None
+    if n < 1:
+        raise Usage(f"{flag} needs a number of at least 1, not {n}")
+    return n
+
+
 def main(argv: list[str]) -> int:
     targets: list[Path] = []
     corpus: list[Path] = []
     min_chars = DEFAULT_MIN_CHARS
     require_quotes = False
     it = iter(argv)
-    for a in it:
-        if a == "--corpus":
-            corpus.append(Path(next(it, "")).expanduser())
-        elif a == "--min-chars":
-            min_chars = int(next(it, str(DEFAULT_MIN_CHARS)))
-        elif a == "--require-quotes":
-            require_quotes = True
-        elif a in ("-h", "--help"):
-            print(__doc__)
-            return 0
-        else:
-            targets.append(Path(a).expanduser())
+    try:
+        for a in it:
+            if a == "--corpus":
+                corpus.append(Path(_value(it, "--corpus")).expanduser())
+            elif a == "--min-chars":
+                min_chars = _positive_int(_value(it, "--min-chars"), "--min-chars")
+            elif a == "--require-quotes":
+                require_quotes = True
+            elif a in ("-h", "--help"):
+                print(__doc__)
+                return 0
+            else:
+                targets.append(Path(a).expanduser())
+    except Usage as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
+        return 2
     if not targets or not corpus:
         print(__doc__, file=sys.stderr)
         return 2
